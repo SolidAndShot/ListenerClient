@@ -15,10 +15,10 @@ final class ClientActions {
     static void execute(String action, String value) {
         Minecraft client = Minecraft.getInstance();
         switch (action) {
-            case "message", "overlay" -> {
+            case "message" -> {
                 if (client.player != null) client.player.sendSystemMessage(Component.literal(value));
             }
-            case "actionbar" -> {
+            case "overlay", "actionbar" -> {
                 if (client.player != null) client.player.sendOverlayMessage(Component.literal(value));
             }
             case "title" -> {
