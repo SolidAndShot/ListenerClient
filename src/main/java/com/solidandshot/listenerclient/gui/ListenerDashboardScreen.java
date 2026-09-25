@@ -54,11 +54,13 @@ public final class ListenerDashboardScreen extends Screen {
         panelLeft = (width - panelWidth) / 2; panelTop = (height - panelHeight) / 2;
         int leftWidth = 245, centerWidth = 390, rightLeft = panelLeft + leftWidth + centerWidth + 24;
         searchBox = new EditBox(font, panelLeft + 16, panelTop + 76, leftWidth - 32, 20, Component.literal("搜索事件"));
-        searchBox.setHint(Component.literal("搜索事件…")); searchBox.setResponder(value -> refreshEventVisibility()); addRenderableWidget(searchBox);
+        searchBox.setHint(Component.literal("搜索事件…"));
+        searchBox.setResponder(value -> { eventOffset = 0; refreshEventVisibility(); });
+        addRenderableWidget(searchBox);
         int categoryY = panelTop + 105;
         for (int i = 0; i < CATEGORIES.length; i++) {
             final String selected = CATEGORIES[i];
-            Button button = Button.builder(Component.literal(selected), ignored -> { category = selected; refreshCategoryButtons(); refreshEventVisibility(); })
+            Button button = Button.builder(Component.literal(selected), ignored -> { category = selected; eventOffset = 0; refreshCategoryButtons(); refreshEventVisibility(); })
                     .bounds(panelLeft + 12 + (i % 3) * 76, categoryY + (i / 3) * 23, 70, 20).build();
             categoryButtons.add(button); addRenderableWidget(button);
         }
