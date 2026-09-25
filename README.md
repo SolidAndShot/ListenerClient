@@ -7,7 +7,7 @@
 ## 安装
 
 1. 在客户端安装与 Minecraft 26.2 匹配的 Fabric Loader 和 Fabric API。
-2. 下载 `build/libs/listenerclient-1.0.0.jar`，放入客户端 `.minecraft/mods`。
+2. 下载仓库中的 [`dist/listenerclient-1.0.0.jar`](dist/listenerclient-1.0.0.jar)，放入客户端 `.minecraft/mods`。该构建已修复事件目录初始化崩溃。
 3. 服务端安装 [Listener](https://github.com/SolidAndShot/Listener) 插件并重启；客户端没有本 Mod 时，服务端原有监听器仍可正常运行。
 
 本 Mod 没有额外端口，也不需要 ProtocolLib。连接服务器后会自动进行一次协议握手；只有握手成功后才会上报客户端事件。
