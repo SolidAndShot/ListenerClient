@@ -2,6 +2,7 @@ package com.solidandshot.listenerclient.network;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import com.solidandshot.listenerclient.gui.ListenerDashboardScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -41,6 +42,8 @@ final class ClientActions {
     private static void openScreen(Minecraft client, String value) {
         if ("close".equalsIgnoreCase(value) || "none".equalsIgnoreCase(value)) {
             client.gui.setScreen(null);
+        } else if ("dashboard".equalsIgnoreCase(value) || "listener".equalsIgnoreCase(value)) {
+            client.gui.setScreen(new ListenerDashboardScreen());
         } else if ("inventory".equalsIgnoreCase(value)) {
             client.gui.setScreen(new InventoryScreen(client.player));
         }

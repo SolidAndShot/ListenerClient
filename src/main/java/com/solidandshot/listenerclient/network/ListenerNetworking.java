@@ -1,6 +1,7 @@
 package com.solidandshot.listenerclient.network;
 
 import com.solidandshot.listenerclient.ClientStateTracker;
+import com.solidandshot.listenerclient.ClientSettings;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.Minecraft;
@@ -25,6 +26,13 @@ public final class ListenerNetworking {
 
     private static volatile boolean registered;
     private static volatile boolean accepted;
+    private static volatile String handshakeReason = "尚未收到服务器握手";
+    private static volatile String serverCapabilities = "";
+
+    /** Features advertised by this client in the HELLO frame. */
+    private static final List<String> CLIENT_FEATURES = List.of(
+            "keyboard", "mouse", "screen", "client_tick", "position",
+            "look", "player_state", "chat", "world", "sound");
 
     private ListenerNetworking() {
     }
@@ -40,11 +48,15 @@ public final class ListenerNetworking {
 
     public static void onJoin(Minecraft client) {
         accepted = false;
+        handshakeReason = "等待服务器握手";
+        serverCapabilities = "";
         client.execute(() -> sendHello());
     }
 
     public static void onDisconnect() {
         accepted = false;
+        handshakeReason = "未连接服务器";
+        serverCapabilities = "";
         ClientStateTracker.reset();
     }
 
@@ -52,8 +64,20 @@ public final class ListenerNetworking {
         return accepted;
     }
 
+    public static String handshakeReason() {
+        return handshakeReason;
+    }
+
+    public static String serverCapabilities() {
+        return serverCapabilities;
+    }
+
+    public static List<String> clientFeatures() {
+        return CLIENT_FEATURES;
+    }
+
     public static void sendEvent(String event, String... fields) {
-        if (!accepted || event == null || event.isBlank()) return;
+        if (!accepted || event == null || event.isBlank() || !ClientSettings.allows(event)) return;
         try {
             int count = Math.min(fields.length / 2, 64);
             byte[] payload = frame(OP_EVENT, out -> {
@@ -77,11 +101,8 @@ public final class ListenerNetworking {
             byte[] payload = frame(OP_HELLO, out -> {
                 out.writeByte(PROTOCOL_VERSION);
                 out.writeUTF("1.0.0");
-                List<String> features = List.of(
-                        "keyboard", "mouse", "screen", "client_tick", "position",
-                        "look", "player_state", "chat", "world", "sound");
-                out.writeByte(features.size());
-                for (String feature : features) out.writeUTF(feature);
+                out.writeByte(CLIENT_FEATURES.size());
+                for (String feature : CLIENT_FEATURES) out.writeUTF(feature);
             });
             if (ClientPlayNetworking.canSend(ListenerPayload.TYPE)) {
                 ClientPlayNetworking.send(new ListenerPayload(payload));
@@ -98,8 +119,8 @@ public final class ListenerNetworking {
             if (version != PROTOCOL_VERSION) return;
             if (op == OP_HELLO_ACK) {
                 accepted = in.readBoolean();
-                readString(in); // reason
-                readString(in); // capabilities
+                handshakeReason = readString(in);
+                serverCapabilities = readString(in);
             } else if (op == OP_ACTION && accepted) {
                 String action = readString(in).toLowerCase();
                 String value = readString(in);

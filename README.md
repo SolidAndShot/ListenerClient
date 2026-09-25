@@ -12,6 +12,25 @@
 
 本 Mod 没有额外端口，也不需要 ProtocolLib。连接服务器后会自动进行一次协议握手；只有握手成功后才会上报客户端事件。
 
+## 图形化控制台
+
+进入游戏后按 **K** 打开“监听器客户端控制台”。界面会显示连接/握手状态，并提供四个可以直接点击调整的事件类别开关：
+
+- 输入事件：键盘按键与字符输入；
+- 鼠标事件：点击、滚轮与鼠标移动；
+- 位置与注视：位置、维度切换和注视目标；
+- 状态事件：奔跑、游泳、受伤、天气、流体和 `client_tick`。
+
+点击“保存设置”或关闭界面后，设置会写入客户端的 `config/listenerclient.properties`。再次按 K 可以关闭控制台。服务端也可以通过白名单动作打开它：
+
+```yaml
+actions:
+  - type: client_screen
+    value: dashboard
+```
+
+该界面只调整本地事件上报，不会修改服务端规则；服务端规则仍在 `plugins/Listener/config.yml` 中维护。
+
 ## 已实现的客户端事件
 
 事件会被服务端自动规范化为 `client_<事件名>`，例如 `keyboard_key_pressed` 对应规则事件 `client_keyboard_key_pressed`。
