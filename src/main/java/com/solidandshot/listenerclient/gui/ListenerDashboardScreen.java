@@ -41,62 +41,157 @@ public final class ListenerDashboardScreen extends Screen {
     private static final List<EventEntry> EVENTS = eventCatalog();
 
     private final ClientRuleDraft draft = ClientRuleDraft.load();
-    private final List<Button> eventButtons = new ArrayList<>(), categoryButtons = new ArrayList<>();
+    private final List<Button> eventButtons = new ArrayList<>(), categoryButtons = new ArrayList<>(), pageButtons = new ArrayList<>();
     private EditBox searchBox, idBox, filterKeyBox, filterValueBox, actionValueBox;
     private Button actionTypeButton, enabledButton;
-    private Button remoteLoadButton;
+    private Button remoteLoadButton, remoteTestButton, remoteDeleteButton;
     private String category = "全部", notice = "本地草稿未同步";
     private int eventOffset, remoteIndex;
     private int panelLeft, panelTop, panelWidth, panelHeight;
+    /** Calculated column geometry.  The old editor used fixed 245/390/190px
+     * columns, which overflowed on the default 854x480 Minecraft window. */
+    private int leftWidth, centerWidth, rightLeft, rightWidth;
+    private int footerButtonY, remoteButtonY;
+    private int eventY, eventRows;
+    private boolean compactMode;
+    private int compactPage;
 
     public ListenerDashboardScreen() { super(Component.literal("监听器规则编辑器")); }
 
     @Override protected void init() {
-        panelWidth = Math.min(1120, Math.max(760, width - 24));
-        panelHeight = Math.min(620, Math.max(430, height - 24));
-        panelLeft = (width - panelWidth) / 2; panelTop = (height - panelHeight) / 2;
-        int leftWidth = 245, centerWidth = 390, rightLeft = panelLeft + leftWidth + centerWidth + 24;
-        searchBox = new EditBox(font, panelLeft + 16, panelTop + 76, leftWidth - 32, 20, Component.literal("搜索事件"));
+        // Always keep the frame inside the actual framebuffer.  In
+        // particular, do not force a 760x430 minimum: that is larger than
+        // many players' default GUI-scaled windows.
+        panelWidth = Math.min(1120, Math.max(1, width - 16));
+        panelHeight = Math.min(620, Math.max(1, height - 16));
+        panelLeft = Math.max(0, (width - panelWidth) / 2);
+        panelTop = Math.max(0, (height - panelHeight) / 2);
+        compactMode = width < 900 || height < 500;
+
+        // Allocate the available width instead of assuming a 1120px screen.
+        // The left and centre columns retain enough room for their controls;
+        // the action column receives the remainder.  At 854x480 this yields
+        // roughly 230/310/266px and every control remains inside its panel.
+        int usableWidth = Math.max(1, panelWidth - 24);
+        leftWidth = Math.max(1, Math.min(245, Math.round(usableWidth * 0.30f)));
+        centerWidth = Math.max(1, Math.min(390, Math.round(usableWidth * 0.40f)));
+        // Keep a visible action column even on very narrow logical viewports.
+        int minimumRight = Math.min(150, Math.max(1, usableWidth / 4));
+        if (leftWidth + centerWidth > usableWidth - minimumRight) {
+            centerWidth = Math.max(1, usableWidth - leftWidth - minimumRight);
+        }
+        if (leftWidth + centerWidth > usableWidth) {
+            leftWidth = Math.max(1, Math.min(leftWidth, usableWidth / 2));
+            centerWidth = Math.max(1, usableWidth - leftWidth);
+        }
+        rightWidth = Math.max(1, usableWidth - leftWidth - centerWidth);
+        rightLeft = panelLeft + leftWidth + centerWidth + 24;
+        footerButtonY = Math.max(panelTop + 1, panelTop + panelHeight - 28);
+        // On short windows move the server controls upward so they cannot
+        // overlap the footer buttons.
+        remoteButtonY = Math.max(panelTop + 1, Math.min(panelTop + 302, footerButtonY - 50));
+
+        if (compactMode) {
+            String[] pages = {"事件", "规则", "动作"};
+            int pageWidth = Math.max(1, (panelWidth - 24) / pages.length);
+            int pageGap = pageWidth + 4;
+            for (int i = 0; i < pages.length; i++) {
+                final int page = i;
+                Button pageButton = Button.builder(Component.literal(pages[i]), ignored -> {
+                            compactPage = page;
+                            refreshCompactVisibility();
+                        })
+                        .bounds(panelLeft + 8 + i * pageGap, panelTop + 4, pageWidth, 20).build();
+                pageButtons.add(pageButton);
+                addRenderableWidget(pageButton);
+            }
+        }
+
+        int leftInnerWidth = Math.max(1, leftWidth - 32);
+        searchBox = new EditBox(font, compactMode ? panelLeft + 8 : panelLeft + 16,
+                compactMode ? panelTop + 30 : panelTop + 76,
+                compactMode ? Math.max(1, panelWidth - 16) : leftInnerWidth, 20, Component.literal("搜索事件"));
         searchBox.setHint(Component.literal("搜索事件…"));
         searchBox.setResponder(value -> { eventOffset = 0; refreshEventVisibility(); });
         addRenderableWidget(searchBox);
-        int categoryY = panelTop + 105;
+        int categoryY = compactMode ? panelTop + 57 : panelTop + 105;
         for (int i = 0; i < CATEGORIES.length; i++) {
             final String selected = CATEGORIES[i];
+            int categoryWidth = Math.max(1, Math.min(70, (leftWidth - 30) / 3));
+            int categoryGap = Math.max(1, (leftWidth - 24) / 3);
             Button button = Button.builder(Component.literal(selected), ignored -> { category = selected; eventOffset = 0; refreshCategoryButtons(); refreshEventVisibility(); })
-                    .bounds(panelLeft + 12 + (i % 3) * 76, categoryY + (i / 3) * 23, 70, 20).build();
+                    .bounds((compactMode ? panelLeft + 8 : panelLeft + 12) + (i % 3) * categoryGap, categoryY + (i / 3) * 23,
+                            categoryWidth, 20).build();
             categoryButtons.add(button); addRenderableWidget(button);
         }
-        int eventY = panelTop + 181;
+        eventY = compactMode ? panelTop + 130 : panelTop + 181;
+        eventRows = compactMode ? Math.max(1, Math.min(5, (panelHeight - (eventY - panelTop) - 38) / 24)) : 8;
         for (int i = 0; i < EVENTS.size(); i++) {
             EventEntry event = EVENTS.get(i);
             Button button = Button.builder(Component.literal(event.label), ignored -> selectEvent(event.id))
-                    .bounds(panelLeft + 16, eventY + (i % 8) * 25, leftWidth - 32, 21).build();
+                    .bounds(panelLeft + (compactMode ? 8 : 16), eventY + (i % eventRows) * 23,
+                            compactMode ? Math.max(1, panelWidth - 16) : leftInnerWidth, 21).build();
             eventButtons.add(button); addRenderableWidget(button);
         }
-        idBox = new EditBox(font, panelLeft + leftWidth + 16, panelTop + 92, centerWidth - 32, 20, Component.literal("规则 ID"));
+        int formX = compactMode ? panelLeft + 8 : panelLeft + leftWidth + 16;
+        int formWidth = compactMode ? Math.max(1, panelWidth - 16) : Math.max(1, centerWidth - 32);
+        int formTop = compactMode ? panelTop + 58 : panelTop + 92;
+        idBox = new EditBox(font, formX, formTop, formWidth, 20, Component.literal("规则 ID"));
         idBox.setValue(draft.id); idBox.setMaxLength(64); addRenderableWidget(idBox);
-        filterKeyBox = new EditBox(font, panelLeft + leftWidth + 16, panelTop + 195, 156, 20, Component.literal("条件字段"));
+        int centerInnerWidth = Math.max(1, centerWidth - 32);
+        int filterKeyWidth = Math.max(1, Math.min(156, centerInnerWidth / 2 - 4));
+        int filterTop = compactMode ? panelTop + 86 : panelTop + 195;
+        filterKeyBox = new EditBox(font, formX, filterTop, compactMode ? Math.max(1, formWidth / 2 - 4) : filterKeyWidth, 20, Component.literal("条件字段"));
         filterKeyBox.setValue(draft.filterKey); filterKeyBox.setMaxLength(64); addRenderableWidget(filterKeyBox);
-        filterValueBox = new EditBox(font, panelLeft + leftWidth + 184, panelTop + 195, centerWidth - 200, 20, Component.literal("条件值"));
+        int compactFilterKeyWidth = Math.max(1, formWidth / 2 - 4);
+        filterValueBox = new EditBox(font, formX + (compactMode ? compactFilterKeyWidth + 8 : filterKeyWidth + 8), filterTop,
+                compactMode ? Math.max(1, formWidth - compactFilterKeyWidth - 8) : Math.max(1, centerInnerWidth - filterKeyWidth - 8), 20, Component.literal("条件值"));
         filterValueBox.setValue(draft.filterValue); filterValueBox.setMaxLength(256); addRenderableWidget(filterValueBox);
+        int rightInnerWidth = Math.max(1, rightWidth - 16);
+        int actionButtonWidth = Math.max(1, Math.min(190, rightInnerWidth));
+        int actionX = compactMode ? panelLeft + 8 : rightLeft;
+        int actionWidth = compactMode ? Math.max(1, panelWidth - 16) : actionButtonWidth;
         actionTypeButton = Button.builder(Component.literal("动作：" + draft.action), ignored -> cycleAction())
-                .bounds(rightLeft, panelTop + 136, 190, 22).build(); addRenderableWidget(actionTypeButton);
-        actionValueBox = new EditBox(font, rightLeft, panelTop + 181, panelLeft + panelWidth - 18 - rightLeft, 20, Component.literal("动作内容"));
+                .bounds(actionX, compactMode ? panelTop + 58 : panelTop + 136, actionWidth, 22).build(); addRenderableWidget(actionTypeButton);
+        actionValueBox = new EditBox(font, actionX, compactMode ? panelTop + 86 : panelTop + 181,
+                compactMode ? Math.max(1, panelWidth - 16) : rightInnerWidth, 20, Component.literal("动作内容"));
         actionValueBox.setValue(draft.actionValue); actionValueBox.setMaxLength(4096); addRenderableWidget(actionValueBox);
         enabledButton = Button.builder(enabledText(), ignored -> { draft.enabled = !draft.enabled; enabledButton.setMessage(enabledText()); })
-                .bounds(rightLeft, panelTop + 226, 190, 22).build(); addRenderableWidget(enabledButton);
-        addRenderableWidget(Button.builder(Component.literal("保存本地草稿"), ignored -> saveDraft()).bounds(rightLeft, panelTop + panelHeight - 57, 145, 22).build());
-        addRenderableWidget(Button.builder(Component.literal("保存并导出"), ignored -> exportDraft()).bounds(rightLeft + 153, panelTop + panelHeight - 57, 145, 22).build());
-        addRenderableWidget(Button.builder(Component.literal("关闭"), ignored -> onClose()).bounds(panelLeft + panelWidth - 110, panelTop + panelHeight - 57, 94, 22).build());
+                .bounds(actionX, compactMode ? panelTop + 114 : panelTop + 226, actionWidth, 22).build(); addRenderableWidget(enabledButton);
+        int footerWidth = Math.max(1, panelWidth - 32);
+        int closeWidth = Math.min(94, Math.max(1, footerWidth / 5));
+        int footerGap = 6;
+        int footerActionWidth = Math.max(1, (footerWidth - closeWidth - footerGap * 2) / 3);
+        int footerX = panelLeft + 16;
+        addRenderableWidget(Button.builder(Component.literal("保存本地草稿"), ignored -> saveDraft()).bounds(footerX, footerButtonY, footerActionWidth, 22).build());
+        addRenderableWidget(Button.builder(Component.literal("保存并导出"), ignored -> exportDraft()).bounds(footerX + footerActionWidth + footerGap, footerButtonY, footerActionWidth, 22).build());
+        addRenderableWidget(Button.builder(Component.literal("关闭"), ignored -> onClose()).bounds(panelLeft + panelWidth - closeWidth - 16, footerButtonY, closeWidth, 22).build());
+        // The server row has its own split.  Reusing the 190px action width
+        // made the test button collapse to 1px on 480px logical viewports.
+        int remoteX = compactMode ? panelLeft + 8 : rightLeft;
+        int remoteLoadWidth = compactMode ? Math.max(1, (panelWidth - 24) / 2)
+                : Math.max(1, Math.min(190, (rightInnerWidth - 8) * 3 / 5));
+        int testX = compactMode ? remoteX + remoteLoadWidth + 8 : rightLeft + remoteLoadWidth + 8;
+        int testWidth = compactMode ? Math.max(1, panelWidth - remoteLoadWidth - 24)
+                : Math.max(1, rightInnerWidth - remoteLoadWidth - 8);
         remoteLoadButton = Button.builder(Component.literal("载入服务器规则"), ignored -> loadRemoteRule())
-                .bounds(rightLeft, panelTop + 302, 190, 22).build();
+                .bounds(remoteX, remoteButtonY, remoteLoadWidth, 22).build();
         addRenderableWidget(remoteLoadButton);
-        addRenderableWidget(Button.builder(Component.literal("测试当前规则"), ignored -> testRemoteRule())
-                .bounds(rightLeft + 198, panelTop + 302, 125, 22).build());
-        addRenderableWidget(Button.builder(Component.literal("删除当前规则"), ignored -> deleteRemoteRule())
-                .bounds(rightLeft, panelTop + 329, 190, 22).build());
-        selectEvent(draft.event); refreshCategoryButtons(); refreshEventVisibility();
+        remoteTestButton = Button.builder(Component.literal("测试当前规则"), ignored -> testRemoteRule())
+                .bounds(testX, remoteButtonY, testWidth, 22).build();
+        addRenderableWidget(remoteTestButton);
+        remoteDeleteButton = Button.builder(Component.literal("删除当前规则"), ignored -> deleteRemoteRule())
+                .bounds(remoteX, remoteButtonY + 27, compactMode ? remoteLoadWidth : Math.max(1, Math.min(190, rightInnerWidth)), 22).build();
+        addRenderableWidget(remoteDeleteButton);
+        // In a short GUI-scaled window the fixed-height editor sections leave
+        // no safe row for server operations.  Keep editing available and hide
+        // these optional controls instead of letting them overlap fields.
+        if (panelHeight < 240) {
+            remoteLoadButton.visible = false;
+            remoteTestButton.visible = false;
+            remoteDeleteButton.visible = false;
+        }
+        selectEvent(draft.event); refreshCategoryButtons(); refreshEventVisibility(); refreshCompactVisibility();
         ListenerNetworking.requestRuleSync();
     }
 
@@ -107,24 +202,48 @@ public final class ListenerDashboardScreen extends Screen {
     }
     private Component enabledText() { return Component.literal((draft.enabled ? "✓ 已启用" : "○ 已停用") + "（点击切换）"); }
     private void refreshCategoryButtons() { for (Button b : categoryButtons) b.active = !b.getMessage().getString().equals(category); }
+    private void refreshCompactVisibility() {
+        if (!compactMode) return;
+        boolean events = compactPage == 0;
+        boolean rule = compactPage == 1;
+        boolean actions = compactPage == 2;
+        searchBox.visible = events;
+        for (Button button : categoryButtons) button.visible = events;
+        for (Button button : eventButtons) button.visible = events && button.active;
+        idBox.visible = rule;
+        filterKeyBox.visible = rule;
+        filterValueBox.visible = rule;
+        actionTypeButton.visible = actions;
+        actionValueBox.visible = actions;
+        enabledButton.visible = actions;
+        boolean remote = actions && panelHeight >= 240;
+        remoteLoadButton.visible = remote;
+        remoteTestButton.visible = remote;
+        remoteDeleteButton.visible = remote;
+        for (int i = 0; i < pageButtons.size(); i++) pageButtons.get(i).active = i != compactPage;
+    }
     private void refreshEventVisibility() {
         String query = searchBox == null ? "" : searchBox.getValue().toLowerCase(Locale.ROOT);
-        eventOffset = Math.min(eventOffset, Math.max(0, filteredEventCount() - 8));
+        int slots = eventSlots();
+        eventOffset = Math.min(eventOffset, Math.max(0, filteredEventCount() - slots));
         int shown = 0, matched = 0;
         for (int i = 0; i < EVENTS.size(); i++) {
             EventEntry event = EVENTS.get(i);
             boolean matches = (category.equals("全部") || event.category.equals(category)) && (query.isBlank() || event.id.contains(query) || event.label.contains(query));
             Button button = eventButtons.get(i);
-            boolean visible = matches && matched++ >= eventOffset && shown < 8;
-            if (visible) button.setY(panelTop + 181 + shown++ * 21);
+            boolean visible = matches && matched++ >= eventOffset && shown < slots;
+            if (visible) button.setY(eventY + shown++ * (compactMode ? 23 : 21));
             button.visible = visible; button.active = visible;
         }
+        refreshCompactVisibility();
     }
 
     @Override public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (mouseX >= panelLeft && mouseX <= panelLeft + 245 && mouseY >= panelTop + 150 && mouseY <= panelTop + panelHeight - 70) {
+        if ((!compactMode || compactPage == 0) && mouseX >= panelLeft && mouseX <= panelLeft + (compactMode ? panelWidth : leftWidth)
+                && mouseY >= eventY - 8 && mouseY <= panelTop + panelHeight - 32) {
             int matches = filteredEventCount();
-            eventOffset = Math.max(0, Math.min(Math.max(0, matches - 8), eventOffset + (verticalAmount < 0 ? 1 : -1)));
+            int slots = eventSlots();
+            eventOffset = Math.max(0, Math.min(Math.max(0, matches - slots), eventOffset + (verticalAmount < 0 ? 1 : -1)));
             refreshEventVisibility();
             return true;
         }
@@ -136,6 +255,12 @@ public final class ListenerDashboardScreen extends Screen {
         int count = 0;
         for (EventEntry event : EVENTS) if ((category.equals("全部") || event.category.equals(category)) && (query.isBlank() || event.id.contains(query) || event.label.contains(query))) count++;
         return count;
+    }
+    private int eventSlots() {
+        // Event buttons start at panelTop+181 while the card ends at
+        // panelTop+panelHeight-76.  Derive the number of rows from that
+        // available height rather than always drawing eight off-screen rows.
+        return compactMode ? eventRows : Math.max(1, Math.min(8, (panelHeight - 199) / 21));
     }
     private void copyFields() {
         draft.id = idBox.getValue().isBlank() ? "client_rule" : idBox.getValue().trim();
@@ -191,10 +316,18 @@ public final class ListenerDashboardScreen extends Screen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fillGradient(0, 0, width, height, BG, 0xFF142A43); graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, PANEL); graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, EDGE);
-        int leftWidth = 245, centerWidth = 390, rightLeft = panelLeft + leftWidth + centerWidth + 24;
+        if (compactMode) {
+            graphics.text(font, Component.literal("监听器编辑器"), panelLeft + 8, panelTop + panelHeight - 13, TEXT);
+            String pageTitle = compactPage == 0 ? "事件目录（滚轮浏览）"
+                    : compactPage == 1 ? "规则与过滤条件" : "动作与服务器操作";
+            graphics.text(font, Component.literal(pageTitle), panelLeft + 8, panelTop + 28, MUTED);
+            graphics.text(font, Component.literal(notice), panelLeft + 8, Math.max(panelTop + 1, footerButtonY - 12), GOOD);
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+            return;
+        }
         drawPanel(graphics, panelLeft + 8, panelTop + 58, leftWidth - 16, panelHeight - 76, "监听条件");
         drawPanel(graphics, panelLeft + leftWidth + 8, panelTop + 58, centerWidth - 16, panelHeight - 76, "条件卡片");
-        drawPanel(graphics, rightLeft - 8, panelTop + 58, panelLeft + panelWidth - rightLeft - 8, panelHeight - 76, "动作预览");
+        drawPanel(graphics, rightLeft - 8, panelTop + 58, rightWidth, panelHeight - 76, "动作预览");
         graphics.text(font, Component.literal("监听器 · 规则编辑器"), panelLeft + 18, panelTop + 15, TEXT);
         graphics.text(font, Component.literal("FancyMenu 风格客户端事件工作台"), panelLeft + 18, panelTop + 34, MUTED);
         graphics.text(font, Component.literal("K"), panelLeft + panelWidth - 150, panelTop + 19, ACCENT); graphics.text(font, Component.literal("打开/关闭编辑器"), panelLeft + panelWidth - 133, panelTop + 19, MUTED);
@@ -209,11 +342,22 @@ public final class ListenerDashboardScreen extends Screen {
             graphics.text(font, Component.literal("• " + rule.id() + " · " + rule.event()), panelLeft + leftWidth + 18, panelTop + 254 + ruleLine++ * 14, TEXT);
         }
         graphics.text(font, Component.literal("动作类型（点击循环）"), rightLeft, panelTop + 117, MUTED); graphics.text(font, Component.literal("动作值 / 模板"), rightLeft, panelTop + 164, MUTED);
-        graphics.text(font, Component.literal("服务器规则：" + ListenerNetworking.remoteRules().size() + " 条"), rightLeft, panelTop + 262, MUTED);
-        graphics.text(font, Component.literal("导出格式：event + filter + action"), rightLeft, panelTop + 280, MUTED); graphics.text(font, Component.literal(notice), panelLeft + 18, panelTop + panelHeight - 26, GOOD);
+        graphics.text(font, Component.literal("服务器规则：" + ListenerNetworking.remoteRules().size() + " 条"), rightLeft, Math.min(panelTop + 262, footerButtonY - 70), MUTED);
+        graphics.text(font, Component.literal("导出格式：event + filter + action"), rightLeft, Math.min(panelTop + 280, footerButtonY - 52), MUTED); graphics.text(font, Component.literal(notice), panelLeft + 18, panelTop + panelHeight - 26, GOOD);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
-    private void drawPanel(GuiGraphicsExtractor graphics, int x, int y, int w, int h, String title) { graphics.fill(x, y, x + w, y + h, CARD); graphics.outline(x, y, w, h, EDGE); graphics.text(font, Component.literal(title), x + 10, y + 9, TEXT); }
+    private void drawPanel(GuiGraphicsExtractor graphics, int x, int y, int w, int h, String title) {
+        // A GUI-scaled viewport can be only a few hundred logical pixels
+        // wide/high.  Never pass negative geometry to GuiGraphicsExtractor;
+        // its scissor implementation rejects that with an exception.
+        int safeX = Math.max(0, Math.min(x, width));
+        int safeY = Math.max(0, Math.min(y, height));
+        int safeW = Math.max(1, Math.min(w, width - safeX));
+        int safeH = Math.max(1, Math.min(h, height - safeY));
+        graphics.fill(safeX, safeY, safeX + safeW, safeY + safeH, CARD);
+        graphics.outline(safeX, safeY, safeW, safeH, EDGE);
+        graphics.text(font, Component.literal(title), safeX + 10, Math.min(safeY + 9, height - 1), TEXT);
+    }
     @Override public boolean isPauseScreen() { return false; }
 
     /** Full FancyMenu 26.2 provider catalog; unsupported client-local providers remain selectable for future bridges. */
