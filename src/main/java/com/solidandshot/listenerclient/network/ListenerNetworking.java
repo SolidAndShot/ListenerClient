@@ -91,7 +91,7 @@ public final class ListenerNetworking {
 
     /** Requests rules visible to the current player (requires listener.admin on the server). */
     public static void requestRuleSync() {
-        sendEditFrame(1, null);
+        sendEditFrame(1, (ClientRuleDraft) null);
     }
 
     /** Sends an editor draft using the extensible v1 EDIT_REQUEST operation. */

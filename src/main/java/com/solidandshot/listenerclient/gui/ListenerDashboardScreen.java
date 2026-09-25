@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /** Three-column local rule editor inspired by FancyMenu's provider/action workflow. */
 public final class ListenerDashboardScreen extends Screen {
@@ -26,13 +27,23 @@ public final class ListenerDashboardScreen extends Screen {
             "client_message", "client_overlay", "client_screen", "client_sound", "client_action",
             "set_variable", "log", "console_command"
     };
+    private static final Set<String> IMPLEMENTED_EVENTS = Set.of(
+            "keyboard_key_pressed", "keyboard_key_released", "keyboard_char_typed",
+            "mouse_moved", "mouse_button_clicked", "mouse_button_released", "mouse_scrolled",
+            "screen_open", "screen_close", "enter_dimension", "dimension_entered", "position_changed",
+            "start_looking_at_block", "stop_looking_at_block", "start_looking_at_entity", "stop_looking_at_entity",
+            "started_running", "stopped_running", "start_swimming", "stop_swimming",
+            "started_burning", "damage_taken", "experience_changed", "weather_changed",
+            "started_drowning", "stopped_drowning", "started_freezing", "stopped_freezing", "fully_frozen",
+            "start_touching_fluid", "stop_touching_fluid", "player_death");
 
     private final ClientRuleDraft draft = ClientRuleDraft.load();
     private final List<Button> eventButtons = new ArrayList<>(), categoryButtons = new ArrayList<>();
     private EditBox searchBox, idBox, filterKeyBox, filterValueBox, actionValueBox;
     private Button actionTypeButton, enabledButton;
+    private Button remoteLoadButton;
     private String category = "全部", notice = "本地草稿未同步";
-    private int eventOffset;
+    private int eventOffset, remoteIndex;
     private int panelLeft, panelTop, panelWidth, panelHeight;
 
     public ListenerDashboardScreen() { super(Component.literal("监听器规则编辑器")); }
@@ -73,6 +84,13 @@ public final class ListenerDashboardScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("保存本地草稿"), ignored -> saveDraft()).bounds(rightLeft, panelTop + panelHeight - 57, 145, 22).build());
         addRenderableWidget(Button.builder(Component.literal("保存并导出"), ignored -> exportDraft()).bounds(rightLeft + 153, panelTop + panelHeight - 57, 145, 22).build());
         addRenderableWidget(Button.builder(Component.literal("关闭"), ignored -> onClose()).bounds(panelLeft + panelWidth - 110, panelTop + panelHeight - 57, 94, 22).build());
+        remoteLoadButton = Button.builder(Component.literal("载入服务器规则"), ignored -> loadRemoteRule())
+                .bounds(rightLeft, panelTop + 302, 190, 22).build();
+        addRenderableWidget(remoteLoadButton);
+        addRenderableWidget(Button.builder(Component.literal("测试当前规则"), ignored -> testRemoteRule())
+                .bounds(rightLeft + 198, panelTop + 302, 125, 22).build());
+        addRenderableWidget(Button.builder(Component.literal("删除当前规则"), ignored -> deleteRemoteRule())
+                .bounds(rightLeft, panelTop + 329, 190, 22).build());
         selectEvent(draft.event); refreshCategoryButtons(); refreshEventVisibility();
         ListenerNetworking.requestRuleSync();
     }
@@ -122,7 +140,47 @@ public final class ListenerDashboardScreen extends Screen {
     private void saveDraft() { copyFields(); draft.save(); notice = "已保存到 config/listenerclient-draft.properties"; }
     private void exportDraft() {
         copyFields(); draft.save(); ListenerNetworking.sendRuleUpsert(draft);
-        notice = ListenerNetworking.isAccepted() ? "已保存，并通过 listener:main 同步" : "已保存；未连接 Listener 服务端，稍后可重试同步";
+        notice = !ListenerNetworking.isAccepted() ? "已保存；未连接 Listener 服务端，稍后可重试同步"
+                : !ListenerNetworking.serverCapabilities().contains("editor") ? "已保存；当前账号没有 listener.admin 编辑权限"
+                : "已保存，正在通过 listener:main 同步";
+    }
+    private void loadRemoteRule() {
+        List<ListenerNetworking.RemoteRule> rules = ListenerNetworking.remoteRules();
+        if (rules.isEmpty()) { notice = "服务器没有返回可编辑规则（需要 listener.admin）"; return; }
+        ListenerNetworking.RemoteRule rule = rules.get(Math.floorMod(remoteIndex, rules.size()));
+        remoteIndex = (remoteIndex + 1) % rules.size();
+        draft.id = rule.id();
+        draft.event = rule.event().startsWith("client_") ? rule.event().substring("client_".length()) : rule.event();
+        draft.enabled = rule.enabled();
+        if (rule.filters().isEmpty()) { draft.filterKey = "*"; draft.filterValue = ""; }
+        else {
+            var filter = rule.filters().entrySet().iterator().next();
+            draft.filterKey = filter.getKey(); draft.filterValue = filter.getValue();
+        }
+        if (!rule.actions().isEmpty()) {
+            var action = rule.actions().entrySet().iterator().next();
+            draft.action = containsAction(action.getKey()) ? action.getKey() : "message";
+            draft.actionValue = action.getValue();
+        }
+        if (idBox != null) idBox.setValue(draft.id);
+        if (filterKeyBox != null) filterKeyBox.setValue(draft.filterKey);
+        if (filterValueBox != null) filterValueBox.setValue(draft.filterValue);
+        if (actionValueBox != null) actionValueBox.setValue(draft.actionValue);
+        if (actionTypeButton != null) actionTypeButton.setMessage(Component.literal("动作：" + draft.action));
+        if (enabledButton != null) enabledButton.setMessage(enabledText());
+        notice = "已载入服务器规则：" + rule.id();
+    }
+    private void testRemoteRule() {
+        copyFields(); ListenerNetworking.sendRuleTest(draft.id);
+        notice = "已请求服务器测试规则：" + draft.id;
+    }
+    private void deleteRemoteRule() {
+        copyFields(); ListenerNetworking.sendRuleDelete(draft.id);
+        notice = "已请求删除服务器规则：" + draft.id;
+    }
+    private static boolean containsAction(String value) {
+        for (String action : ACTIONS) if (action.equals(value)) return true;
+        return false;
     }
     @Override public void onClose() { copyFields(); draft.save(); super.onClose(); }
 
@@ -139,6 +197,12 @@ public final class ListenerDashboardScreen extends Screen {
         graphics.text(font, Component.literal("FancyMenu 目录：" + EVENTS.size() + " 个 · 滚轮浏览"), panelLeft + 18, panelTop + 169, MUTED);
         graphics.text(font, Component.literal("当前事件：" + draft.event), panelLeft + leftWidth + 16, panelTop + 132, ACCENT);
         graphics.text(font, Component.literal("筛选条件（字段支持 *_contains）"), panelLeft + leftWidth + 16, panelTop + 177, MUTED);
+        graphics.text(font, Component.literal("服务器规则（只读预览）"), panelLeft + leftWidth + 16, panelTop + 238, MUTED);
+        int ruleLine = 0;
+        for (ListenerNetworking.RemoteRule rule : ListenerNetworking.remoteRules()) {
+            if (ruleLine >= 6) break;
+            graphics.text(font, Component.literal("• " + rule.id() + " · " + rule.event()), panelLeft + leftWidth + 18, panelTop + 254 + ruleLine++ * 14, TEXT);
+        }
         graphics.text(font, Component.literal("动作类型（点击循环）"), rightLeft, panelTop + 117, MUTED); graphics.text(font, Component.literal("动作值 / 模板"), rightLeft, panelTop + 164, MUTED);
         graphics.text(font, Component.literal("服务器规则：" + ListenerNetworking.remoteRules().size() + " 条"), rightLeft, panelTop + 262, MUTED);
         graphics.text(font, Component.literal("导出格式：event + filter + action"), rightLeft, panelTop + 280, MUTED); graphics.text(font, Component.literal(notice), panelLeft + 18, panelTop + panelHeight - 26, GOOD);
@@ -194,7 +258,8 @@ public final class ListenerDashboardScreen extends Screen {
             case "keyboard_char_typed" -> "输入字符";
             default -> id;
         };
-        return isLocalResourceProvider(id) ? label + "（需扩展）" : label;
+        if (isLocalResourceProvider(id)) return label + "（FancyMenu 专属，需扩展）";
+        return IMPLEMENTED_EVENTS.contains(id) ? label + "（客户端已实现）" : label + "（目录可选，需扩展）";
     }
 
     private static boolean isLocalResourceProvider(String id) {
