@@ -50,7 +50,7 @@ public final class ClientStateTracker {
             fluidType = player.isInLava() ? "lava" : player.isInWater() ? "water" : "";
         } else {
             if (oldDimension != null && !oldDimension.equals(dimension)) {
-                ListenerNetworking.sendEvent("dimension_entered", "dimension_key", dimension);
+                ListenerNetworking.sendEvent("enter_dimension", "dimension_key", dimension);
                 oldDimension = dimension;
             }
             if (player.getX() != oldX || player.getY() != oldY || player.getZ() != oldZ) {

@@ -46,6 +46,8 @@ final class ClientActions {
             client.gui.setScreen(new ListenerDashboardScreen());
         } else if ("inventory".equalsIgnoreCase(value)) {
             client.gui.setScreen(new InventoryScreen(client.player));
+        } else if ("editor".equalsIgnoreCase(value)) {
+            client.gui.setScreen(new ListenerDashboardScreen());
         }
     }
 
