@@ -20,7 +20,7 @@
 - 鼠标：`mouse_button_clicked`、`mouse_button_released`、`mouse_scrolled`、`mouse_moved`
 - 界面与连接：`screen_open`、`screen_close`、`dimension_entered`、`client_tick`
 - 玩家状态：`position_changed`、`start_looking_at_block`、`stop_looking_at_block`、`start_looking_at_entity`、`stop_looking_at_entity`
-- 状态差分：`started_running`、`stopped_running`、`started_swimming`、`stopped_swimming`、`started_burning`、`stopped_burning`、`damage_taken`、`experience_changed`、`weather_changed`
+- 状态差分：`started_running`、`stopped_running`、`started_swimming`、`stopped_swimming`、`started_burning`、`stopped_burning`、`started_drowning`、`stopped_drowning`、`started_freezing`、`stopped_freezing`、`fully_frozen`、`start_touching_fluid`、`stop_touching_fluid`、`player_death`、`damage_taken`、`experience_changed`、`weather_changed`
 
 常见字段包括：`key_keycode`、`key_scancode`、`key_modifiers`、`button`、`mouse_pos_x`、`mouse_pos_y`、`delta_x`、`delta_y`、`screen`、`dimension_key`、`old_pos_x`、`new_pos_x`、`target`、`damage_amount`、`new_health` 和 `weather_type`。具体字段可在服务端 `/listener info <id>` 和日志中确认。
 

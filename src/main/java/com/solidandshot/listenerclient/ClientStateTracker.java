@@ -16,7 +16,8 @@ public final class ClientStateTracker {
     private static float oldHealth, oldExperience;
     private static String oldDimension, oldLook;
     private static boolean initialized;
-    private static boolean sprinting, swimming, burning, raining;
+    private static boolean sprinting, swimming, burning, raining, drowning, freezing, frozen, touchingFluid, dead;
+    private static String fluidType = "";
     private static int heartbeatTicks;
 
     private ClientStateTracker() {
@@ -43,6 +44,10 @@ public final class ClientStateTracker {
             oldDimension = dimension;
             sprinting = player.isSprinting(); swimming = player.isSwimming(); burning = player.isOnFire();
             raining = client.level.isRaining();
+            drowning = player.getAirSupply() < player.getMaxAirSupply();
+            freezing = player.isFreezing(); frozen = player.isFullyFrozen(); dead = player.isDeadOrDying();
+            touchingFluid = player.isInWater() || player.isInLava();
+            fluidType = player.isInLava() ? "lava" : player.isInWater() ? "water" : "";
         } else {
             if (oldDimension != null && !oldDimension.equals(dimension)) {
                 ListenerNetworking.sendEvent("dimension_entered", "dimension_key", dimension);
@@ -76,6 +81,26 @@ public final class ClientStateTracker {
             boolean nextRaining = client.level.isRaining();
             if (nextRaining != raining) ListenerNetworking.sendEvent("weather_changed", "weather_type", nextRaining ? "rain" : "clear");
             raining = nextRaining;
+            boolean nextDrowning = player.getAirSupply() < player.getMaxAirSupply();
+            if (nextDrowning != drowning) ListenerNetworking.sendEvent(nextDrowning ? "started_drowning" : "stopped_drowning");
+            drowning = nextDrowning;
+            boolean nextFreezing = player.isFreezing();
+            if (nextFreezing != freezing) ListenerNetworking.sendEvent(nextFreezing ? "started_freezing" : "stopped_freezing");
+            freezing = nextFreezing;
+            boolean nextFrozen = player.isFullyFrozen();
+            if (nextFrozen && !frozen) ListenerNetworking.sendEvent("fully_frozen");
+            frozen = nextFrozen;
+            boolean nextDead = player.isDeadOrDying();
+            if (nextDead && !dead) ListenerNetworking.sendEvent("player_death", "death_pos_x", Double.toString(player.getX()), "death_pos_y", Double.toString(player.getY()), "death_pos_z", Double.toString(player.getZ()));
+            dead = nextDead;
+            boolean nextFluid = player.isInWater() || player.isInLava();
+            String nextFluidType = player.isInLava() ? "lava" : player.isInWater() ? "water" : "";
+            if (nextFluid != touchingFluid || !nextFluidType.equals(fluidType)) {
+                if (touchingFluid) ListenerNetworking.sendEvent("stop_touching_fluid", "fluid_type", fluidType);
+                if (nextFluid) ListenerNetworking.sendEvent("start_touching_fluid", "fluid_type", nextFluidType);
+            }
+            touchingFluid = nextFluid;
+            fluidType = nextFluidType;
         }
         sendLookTarget(client);
         // Heartbeat once per second; state transitions above remain immediate.
