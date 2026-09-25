@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "package": "com.solidandshot.listenerclient.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "KeyboardMixin",
+    "MouseMixin",
+    "GuiMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
