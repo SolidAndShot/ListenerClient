@@ -19,6 +19,7 @@ public final class ListenerDashboardScreen extends Screen {
     private static final int EDGE = 0xFF3E5878, TEXT = 0xFFF3F7FF, MUTED = 0xFFA9B8CD;
     private static final int ACCENT = 0xFF72D5FF, GOOD = 0xFF7DE2A8;
     private static final List<EventEntry> EVENTS = eventCatalog();
+    private static final int FANCY_MENU_PROVIDER_COUNT = 85;
     private static final String[] CATEGORIES = {"全部", "屏幕", "键盘", "鼠标", "世界", "状态", "更多"};
     /** Actions understood by ListenerManager. The client_* entries are sent
      * through the mod bridge; the remaining entries execute on the server. */
@@ -196,7 +197,7 @@ public final class ListenerDashboardScreen extends Screen {
         graphics.text(font, Component.literal("FancyMenu 风格客户端事件工作台"), panelLeft + 18, panelTop + 34, MUTED);
         graphics.text(font, Component.literal("K"), panelLeft + panelWidth - 150, panelTop + 19, ACCENT); graphics.text(font, Component.literal("打开/关闭编辑器"), panelLeft + panelWidth - 133, panelTop + 19, MUTED);
         graphics.text(font, Component.literal("规则 ID"), panelLeft + leftWidth + 16, panelTop + 78, MUTED);
-        graphics.text(font, Component.literal("FancyMenu 目录：" + EVENTS.size() + " 个 · 滚轮浏览"), panelLeft + 18, panelTop + 169, MUTED);
+        graphics.text(font, Component.literal("FancyMenu 目录：" + FANCY_MENU_PROVIDER_COUNT + " 个 + 1 个兼容别名 · 滚轮浏览"), panelLeft + 18, panelTop + 169, MUTED);
         graphics.text(font, Component.literal("当前事件：" + draft.event), panelLeft + leftWidth + 16, panelTop + 132, ACCENT);
         graphics.text(font, Component.literal("筛选条件（字段支持 *_contains）"), panelLeft + leftWidth + 16, panelTop + 177, MUTED);
         graphics.text(font, Component.literal("服务器规则（只读预览）"), panelLeft + leftWidth + 16, panelTop + 238, MUTED);
@@ -258,6 +259,7 @@ public final class ListenerDashboardScreen extends Screen {
             case "keyboard_key_pressed" -> "按下按键";
             case "keyboard_key_released" -> "释放按键";
             case "keyboard_char_typed" -> "输入字符";
+            case "dimension_entered" -> "进入维度（兼容别名）";
             default -> id;
         };
         if (isLocalResourceProvider(id)) return label + "（FancyMenu 专属，需扩展）";
