@@ -18,7 +18,6 @@ public final class ListenerDashboardScreen extends Screen {
     private static final int BG = 0xFF09111F, PANEL = 0xF0142136, CARD = 0xE6213048;
     private static final int EDGE = 0xFF3E5878, TEXT = 0xFFF3F7FF, MUTED = 0xFFA9B8CD;
     private static final int ACCENT = 0xFF72D5FF, GOOD = 0xFF7DE2A8;
-    private static final List<EventEntry> EVENTS = eventCatalog();
     private static final int FANCY_MENU_PROVIDER_COUNT = 85;
     private static final String[] CATEGORIES = {"全部", "屏幕", "键盘", "鼠标", "世界", "状态", "更多"};
     /** Actions understood by ListenerManager. The client_* entries are sent
@@ -37,6 +36,9 @@ public final class ListenerDashboardScreen extends Screen {
             "started_burning", "damage_taken", "experience_changed", "weather_changed",
             "started_drowning", "stopped_drowning", "started_freezing", "stopped_freezing", "fully_frozen",
             "start_touching_fluid", "stop_touching_fluid", "player_death");
+    // Must be initialized after IMPLEMENTED_EVENTS because eventCatalog()
+    // uses the support set while building display labels.
+    private static final List<EventEntry> EVENTS = eventCatalog();
 
     private final ClientRuleDraft draft = ClientRuleDraft.load();
     private final List<Button> eventButtons = new ArrayList<>(), categoryButtons = new ArrayList<>();
